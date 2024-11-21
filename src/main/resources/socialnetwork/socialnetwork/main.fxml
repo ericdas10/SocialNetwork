@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<?import javafx.scene.control.cell.PropertyValueFactory?>
+<AnchorPane xmlns="http://javafx.com/javafx/17.0.12" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="socialnetwork.socialnetwork.gui.MainController" prefHeight="400.0" prefWidth="600.0">
+    <VBox spacing="10" AnchorPane.topAnchor="10.0" AnchorPane.leftAnchor="10.0" AnchorPane.rightAnchor="10.0" AnchorPane.bottomAnchor="10.0">
+        <HBox spacing="10">
+            <TextField fx:id="searchField" promptText="Search for friends"/>
+            <Button text="Add Friend" onAction="#handleAddFriend"/>
+            <Button text="Remove Friend" onAction="#handleRemoveFriend"/>
+        </HBox>
+        <TableView fx:id="friendsTable" prefHeight="200">
+            <columns>
+                <TableColumn text="Friends" fx:id="friendsColumn">
+                    <cellValueFactory>
+                        <PropertyValueFactory property="value" />
+                    </cellValueFactory>
+                </TableColumn>
+            </columns>
+        </TableView>
+        <TableView fx:id="requestsTable" prefHeight="200">
+            <columns>
+                <TableColumn text="Friend Requests" fx:id="requestsColumn">
+                    <cellValueFactory>
+                        <PropertyValueFactory property="value" />
+                    </cellValueFactory>
+                </TableColumn>
+            </columns>
+        </TableView>
+        <HBox spacing="10">
+            <Button text="Accept Friend Request" onAction="#handleAcceptFriendRequest"/>
+            <Button text="Logout" onAction="#handleLogout"/>
+            <Button text="Delete Account" onAction="#handleDeleteAccount"/>
+        </HBox>
+    </VBox>
+</AnchorPane>
