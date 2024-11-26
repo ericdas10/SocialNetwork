@@ -4,18 +4,16 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.stage.Stage;
+import socialnetwork.socialnetwork.observer.Observer;
 import socialnetwork.socialnetwork.service.FriendshipService;
 import socialnetwork.socialnetwork.service.UserService;
 
 import java.io.IOException;
 import java.util.List;
 
-public class MainController {
+public class MainController implements Observer {
     @FXML
     private TextField searchField;
     @FXML
@@ -42,6 +40,7 @@ public class MainController {
         requestsTable.setItems(requestsList);
         loadFriends();
         loadRequests();
+        friendshipService.registerObserver(this);
     }
 
     @FXML
@@ -76,19 +75,16 @@ public class MainController {
 
     @FXML
     private void handleLogout() {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/socialnetwork/socialnetwork/login.fxml"));
-            Parent root = loader.load();
-            Stage stage = (Stage) searchField.getScene().getWindow();
-            stage.setScene(new Scene(root, 600, 400));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        LoginController.logoutUser(currentUser);
+        Stage stage = (Stage) searchField.getScene().getWindow();
+        stage.close();
     }
 
     @FXML
     private void handleDeleteAccount() throws IOException {
+        friendshipService.garbageFrindships(friendshipService.findUserByUsername(currentUser));
         userService.deleteUser(friendshipService.findUserByUsername(currentUser));
+        LoginController.logoutUser(currentUser);
         Stage stage = (Stage) searchField.getScene().getWindow();
         stage.close();
     }
@@ -101,5 +97,15 @@ public class MainController {
     private void loadRequests() throws IOException {
         List<String> requests = friendshipService.getPendingRequests(currentUser);
         requestsList.setAll(requests.stream().map(SimpleStringProperty::new).toList());
+    }
+
+    @Override
+    public void update() {
+        try {
+            loadFriends();
+            loadRequests();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
