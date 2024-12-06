@@ -7,6 +7,7 @@ import socialnetwork.socialnetwork.repository.AbstractRepo;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 public class UserService {
@@ -63,5 +64,21 @@ public class UserService {
         } else {
             return users.size();
         }
+    }
+
+    public Iterable<User> getAllUsers() throws IOException {
+        return userRepo.findAll();
+    }
+
+    public User findUserByUsername(String username) throws IOException {
+        return (User) StreamSupport.stream(userRepo.findAll().spliterator(), false)
+                .filter(user -> user.getUsername().equals(username))
+                .collect(Collectors.toList());
+    }
+
+    public List<User> findUsersByUsernames(List<String> usernames) throws IOException {
+        return StreamSupport.stream(userRepo.findAll().spliterator(), false)
+                .filter(user -> usernames.contains(user.getUsername()))
+                .collect(Collectors.toList());
     }
 }

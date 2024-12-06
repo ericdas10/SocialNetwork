@@ -31,7 +31,7 @@
                 <Font size="14.0" />
             </font>
         </PasswordField>
-        <Button fx:id="loginButton" layoutX="692.0" layoutY="337.0" mnemonicParsing="false" prefHeight="25.0" prefWidth="123.0" style="-fx-background-color: #caf087;" text="Log In" textAlignment="CENTER" onAction="#handleLoginOrSignUp">
+        <Button fx:id="loginButton" layoutX="692.0" layoutY="337.0" mnemonicParsing="false" prefHeight="25.0" prefWidth="123.0" style="-fx-background-color: #caf087;" text="Log In" textAlignment="CENTER" onAction="#handleLogin">
             <font>
                 <Font name="System Bold" size="14.0" />
             </font>

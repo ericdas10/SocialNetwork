@@ -133,5 +133,10 @@ public class FriendshipRepoDB implements AbstractRepo<Integer, Friendship> {
         }
         return Optional.empty();
     }
+
+    @Override
+    public Optional<Friendship> update(Friendship entity) {
+        return Optional.empty();
+    }
 }
 

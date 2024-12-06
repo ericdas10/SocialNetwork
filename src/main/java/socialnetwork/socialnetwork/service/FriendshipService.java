@@ -52,14 +52,17 @@ public class FriendshipService implements Subject {
         Optional<User> user2Opt = users.stream()
                 .filter(user -> user.getId().equals(id2))
                 .findFirst();
-
-        if (user1Opt.isPresent() && user2Opt.isPresent()) {
-            Friendship friendship = new Friendship(1 + findLastId(), user1Opt.get(), user2Opt.get(), LocalDate.now());
-            friendshipRepo.save(friendship);
-            notifyObservers();
+        if (!findFriendship(id1, id2)) {
+            if (user1Opt.isPresent() && user2Opt.isPresent()) {
+                Friendship friendship = new Friendship(1 + findLastId(), user1Opt.get(), user2Opt.get(), LocalDate.now());
+                friendshipRepo.save(friendship);
+                notifyObservers();
+            } else {
+                throw new IOException("One or both users not found.");
+            }
         } else {
-            throw new IOException("One or both users not found.");
-        }
+                throw new IOException("Friendship already exists.");
+            }
     }
 
     public void acceptFriendRequest(Integer id1, Integer id2) throws IOException {
@@ -176,5 +179,11 @@ public class FriendshipService implements Subject {
         } else {
             return friendships.size();
         }
+    }
+
+    public boolean findFriendship(Integer id1, Integer id2) throws IOException {
+        return StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
+                .anyMatch(friendship -> (friendship.getUser1().getId().equals(id1) && friendship.getUser2().getId().equals(id2))
+                        || (friendship.getUser1().getId().equals(id2) && friendship.getUser2().getId().equals(id1)));
     }
 }
