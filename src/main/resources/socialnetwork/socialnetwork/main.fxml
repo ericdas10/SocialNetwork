@@ -17,6 +17,11 @@
                                         <Font name="Elephant" size="75.0" />
                                     </font>
                                 </Text>
+                                <Text fx:id="usernameText" layoutX="326.0" layoutY="400.0" strokeType="OUTSIDE" strokeWidth="0.0">
+                                    <font>
+                                        <Font name="Elephant" size="75.0" />
+                                    </font>
+                                </Text>
                                 <Button fx:id="logoutButton" graphicTextGap="5.0" layoutX="14.0" layoutY="516.0" mnemonicParsing="false" onAction="#handleLogout" style="-fx-background-color: red;" text="Logout">
                                     <font>
                                         <Font name="System Bold" size="12.0" />
@@ -114,10 +119,15 @@
                     <content>
                         <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
                             <children>
-                                <TableView fx:id="notificationsTable" layoutX="14.0" layoutY="14.0" prefHeight="541.0" prefWidth="970.0">
+                                <TableView fx:id="notificationsTable" layoutX="14.0" layoutY="14.0"
+                                           prefHeight="541.0" prefWidth="970.0">
                                     <columns>
-                                        <TableColumn prefWidth="969.0" text="Notifications" />
+                                        <TableColumn fx:id="notificationColumn" prefWidth="969.0"
+                                                     text="Notifications"/>
                                     </columns>
+                                    <placeholder>
+                                        <Label text="Nu există notificări"/>
+                                    </placeholder>
                                 </TableView>
                             </children>
                         </AnchorPane>

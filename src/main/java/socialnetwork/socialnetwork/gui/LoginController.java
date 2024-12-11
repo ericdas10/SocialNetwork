@@ -9,10 +9,7 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import socialnetwork.socialnetwork.domain.User;
 import socialnetwork.socialnetwork.domain.validators.UserValidator;
-import socialnetwork.socialnetwork.repository.ChatRoomRepoDB;
-import socialnetwork.socialnetwork.repository.FriendshipRepoDB;
-import socialnetwork.socialnetwork.repository.MessageRepository;
-import socialnetwork.socialnetwork.repository.UserRepoDB;
+import socialnetwork.socialnetwork.repository.*;
 import socialnetwork.socialnetwork.service.ChatRoomService;
 import socialnetwork.socialnetwork.service.FriendshipService;
 import socialnetwork.socialnetwork.service.UserService;
@@ -33,9 +30,9 @@ public class LoginController {
     private Button signUpButton;
 
     private UserService userService = new UserService(new UserRepoDB(), new UserValidator());
-    private FriendshipService fr = new FriendshipService(new FriendshipRepoDB(), new UserRepoDB());
-//    private MessageService messageService = new MessageService(new MessageRepository());
+    private FriendshipService fr = new FriendshipService(new FriendshipRepoDB(), new UserRepoDB(), new NotificationRepoDB());
     private ChatRoomService chatRoomService = new ChatRoomService(new ChatRoomRepoDB(), new MessageRepository());
+    private NotificationRepoDB notificationRepoDB = new NotificationRepoDB();
 
 
     private static Set<String> loggedInUsers = new HashSet<>();
@@ -60,15 +57,16 @@ public class LoginController {
                 FXMLLoader loader = new FXMLLoader(getClass().getResource("/socialnetwork/socialnetwork/main.fxml"));
                 Parent root = loader.load();
                 MainController controller = loader.getController();
-                controller.setUserService(userService, fr, chatRoomService, user.getId());
+                controller.setUserService(userService, fr, chatRoomService,user.getId());
                 Stage mainStage = new Stage();
                 mainStage.setScene(new Scene(root, 1000, 600));
+                controller.initializeWindowCloseHandler(mainStage);
                 mainStage.setTitle("Main Page");
                 mainStage.show();
             } else {
                 showAlert(Alert.AlertType.ERROR, "Invalid username or password.");
             }
-        } catch (IOException ex) {
+        } catch (IOException | SQLException ex) {
             showAlert(Alert.AlertType.ERROR, "An error occurred: " + ex.getMessage());
         }
     }
@@ -105,19 +103,6 @@ public class LoginController {
         Alert alert = new Alert(alertType);
         alert.setContentText(message);
         alert.showAndWait();
-    }
-
-    public void showLoginWindow() {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/socialnetwork/socialnetwork/login.fxml"));
-            Parent root = loader.load();
-            Stage stage = new Stage();
-            stage.setTitle("Login / Sign Up");
-            stage.setScene(new Scene(root, 600, 400));
-            stage.show();
-        } catch (IOException ex) {
-            showAlert(Alert.AlertType.ERROR, "An error occurred: " + ex.getMessage());
-        }
     }
 
     public static void logoutUser(String username) {

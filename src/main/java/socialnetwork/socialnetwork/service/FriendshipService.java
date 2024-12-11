@@ -1,15 +1,16 @@
 package socialnetwork.socialnetwork.service;
 
-import socialnetwork.socialnetwork.domain.Friendship;
-import socialnetwork.socialnetwork.domain.FriendshipStatus;
-import socialnetwork.socialnetwork.domain.User;
+import socialnetwork.socialnetwork.domain.*;
 import socialnetwork.socialnetwork.observer.Observer;
 import socialnetwork.socialnetwork.observer.Subject;
-import socialnetwork.socialnetwork.repository.AbstractRepo;
 import socialnetwork.socialnetwork.repository.FriendshipRepoDB;
+import socialnetwork.socialnetwork.repository.NotificationRepoDB;
+import socialnetwork.socialnetwork.repository.UserRepoDB;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -18,12 +19,14 @@ import java.util.stream.StreamSupport;
 
 public class FriendshipService implements Subject {
     private final FriendshipRepoDB friendshipRepo;
-    private final AbstractRepo<Integer, User> userRepo;
+    private final UserRepoDB userRepo;
     private final List<Observer> observers = new ArrayList<>();
+    private final NotificationRepoDB notificationRepo;
 
-    public FriendshipService(FriendshipRepoDB friendshipRepo, AbstractRepo<Integer, User> userRepo) {
+    public FriendshipService(FriendshipRepoDB friendshipRepo, UserRepoDB userRepo, NotificationRepoDB notificationRepo) {
         this.friendshipRepo = friendshipRepo;
         this.userRepo = userRepo;
+        this.notificationRepo = notificationRepo;
     }
 
     @Override
@@ -44,24 +47,37 @@ public class FriendshipService implements Subject {
     }
 
     public void addFriend(Integer id1, Integer id2) throws IOException {
-        List<User> users = (List<User>) userRepo.findAll();
+        try {
+            Optional<User> user1Opt = userRepo.findOne(id1);
+            Optional<User> user2Opt = userRepo.findOne(id2);
 
-        Optional<User> user1Opt = users.stream()
-                .filter(user -> user.getId().equals(id1))
-                .findFirst();
-        Optional<User> user2Opt = users.stream()
-                .filter(user -> user.getId().equals(id2))
-                .findFirst();
-        if (!findFriendship(id1, id2)) {
-            if (user1Opt.isPresent() && user2Opt.isPresent()) {
-                Friendship friendship = new Friendship(1 + findLastId(), user1Opt.get(), user2Opt.get(), LocalDate.now());
-                friendshipRepo.save(friendship);
-                notifyObservers();
-            } else {
-                throw new IOException("One or both users not found.");
+            if (!findFriendship(id1, id2)) {
+                if (user1Opt.isPresent() && user2Opt.isPresent()) {
+                    // Save friendship
+                    Friendship friendship = new Friendship(1 + findLastId(), user1Opt.get(), user2Opt.get(), LocalDate.now());
+                    friendshipRepo.save(friendship);
+
+                    try {
+                        // Create and save notification
+                        Notification notification = new Notification(
+                                null,
+                                user2Opt.get(),
+                                user1Opt.get(),
+                                LocalDateTime.now()
+                        );
+                        notificationRepo.save(notification);
+                    } catch (SQLException e) {
+                        System.err.println("Error saving notification: " + e.getMessage());
+                        // Don't throw exception here, just log it
+                    }
+
+                    notifyObservers();
+                } else {
+                    throw new IOException("One or both users not found.");
+                }
             }
-        } else {
-            throw new IOException("Friendship already exists.");
+        } catch (Exception e) {
+            throw new IOException("Error adding friend: " + e.getMessage());
         }
     }
 
@@ -156,13 +172,6 @@ public class FriendshipService implements Subject {
                 .orElse(null);
     }
 
-    public User findUserByUsername(String username) throws IOException {
-        return StreamSupport.stream(userRepo.findAll().spliterator(), false)
-                .filter(user -> user.getUsername().equals(username))
-                .findFirst()
-                .orElse(null);
-    }
-
     public void garbageFrindships(User user) throws IOException {
         List<Friendship> allFriendships = StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
                 .toList();
@@ -172,23 +181,6 @@ public class FriendshipService implements Subject {
                 friendshipRepo.remove(friendship.getId());
             }
         }
-    }
-
-    public List<User> getFriends(String currentUser) throws IOException {
-        User user = findUserByUsername(currentUser);
-        return StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
-                .filter(friendship -> friendship.getStatus() == FriendshipStatus.ACCEPTED &&
-                        (friendship.getUser1().getId().equals(user.getId()) || friendship.getUser2().getId().equals(user.getId())))
-                .map(friendship -> friendship.getUser1().getId().equals(user.getId()) ? friendship.getUser2() : friendship.getUser1())
-                .collect(Collectors.toList());
-    }
-
-    public List<User> getPendingRequests(String currentUser) throws IOException {
-        User user = findUserByUsername(currentUser);
-        return StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
-                .filter(friendship -> friendship.getStatus() == FriendshipStatus.PENDING && friendship.getUser2().getId().equals(user.getId()))
-                .map(Friendship::getUser1)
-                .collect(Collectors.toList());
     }
 
     private int findLastId() throws IOException {
@@ -205,5 +197,33 @@ public class FriendshipService implements Subject {
         return StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
                 .anyMatch(friendship -> (friendship.getUser1().getId().equals(id1) && friendship.getUser2().getId().equals(id2))
                         || (friendship.getUser1().getId().equals(id2) && friendship.getUser2().getId().equals(id1)));
+    }
+
+    public Page<User> getFriendsPaginated(String currentUser, int page) throws IOException {
+        Page<Friendship> friendshipsPage = ((FriendshipRepoDB)friendshipRepo).findAcceptedFriendshipsPaginated(currentUser, page);
+
+        List<User> friends = friendshipsPage.getItems().stream()
+                .map(friendship -> {
+                    User user1 = friendship.getUser1();
+                    User user2 = friendship.getUser2();
+                    return user1.getUsername().equals(currentUser) ? user2 : user1;
+                })
+                .collect(Collectors.toList());
+
+        return new Page<>(friends, friendshipsPage.getCurrentPage(),
+                friendshipsPage.getTotalPages(),
+                friendshipsPage.getTotalItems());
+    }
+
+    public Page<User> getPendingRequestsPaginated(String currentUser, int page) throws IOException {
+        Page<Friendship> requestsPage = ((FriendshipRepoDB)friendshipRepo).findPendingFriendshipsPaginated(currentUser, page);
+
+        List<User> requests = requestsPage.getItems().stream()
+                .map(Friendship::getUser1)
+                .collect(Collectors.toList());
+
+        return new Page<>(requests, requestsPage.getCurrentPage(),
+                requestsPage.getTotalPages(),
+                requestsPage.getTotalItems());
     }
 }

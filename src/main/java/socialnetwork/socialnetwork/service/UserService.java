@@ -21,10 +21,6 @@ public class UserService {
         this.userValidator = userValidator;
     }
 
-    public void setFriendshipService(FriendshipService friendshipService) {
-        this.friendshipService = friendshipService;
-    }
-
     public boolean signUp(String username, String password) throws IOException {
         boolean userExists = StreamSupport.stream(userRepo.findAll().spliterator(), false)
                 .anyMatch(user -> user.getUsername().equals(username));
@@ -54,16 +50,6 @@ public class UserService {
         userRepo.remove(user.getId());
         if (friendshipService != null) {
             friendshipService.handleUserDeletion(user);
-        }
-    }
-
-    private int findLastId() throws IOException {
-        List<User> users = (List<User>) userRepo.findAll();
-
-        if (users.isEmpty()) {
-            return 0;
-        } else {
-            return users.size();
         }
     }
 

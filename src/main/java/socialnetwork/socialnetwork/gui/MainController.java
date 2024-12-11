@@ -1,25 +1,29 @@
 package socialnetwork.socialnetwork.gui;
 
+import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.ListChangeListener;
 import javafx.fxml.FXML;
-import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.text.Text;
 import javafx.stage.Stage;
-import socialnetwork.socialnetwork.domain.ChatRoom;
-import socialnetwork.socialnetwork.domain.Message;
-import socialnetwork.socialnetwork.domain.User;
+import socialnetwork.socialnetwork.domain.*;
+import socialnetwork.socialnetwork.observer.ChatObserver;
 import socialnetwork.socialnetwork.observer.Observer;
+import socialnetwork.socialnetwork.repository.NotificationRepoDB;
 import socialnetwork.socialnetwork.service.ChatRoomService;
 import socialnetwork.socialnetwork.service.FriendshipService;
 import socialnetwork.socialnetwork.service.UserService;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class MainController implements Observer {
+public class MainController implements Observer, ChatObserver {
     @FXML
     private Button removeFriendButton;
     @FXML
@@ -59,8 +63,6 @@ public class MainController implements Observer {
     @FXML
     private ListView<String> chatRoomsListView;
     @FXML
-    private TableView<String> notificationsTable;
-    @FXML
     private TextField roomNameField;
     @FXML
     private TextField participantsField;
@@ -68,19 +70,29 @@ public class MainController implements Observer {
     private Pagination friendsPagination;
     @FXML
     private Pagination requestsPagination;
-
-    private static final int ITEMS_PER_PAGE = 10;
-
+    private ChatRoom currentChatRoom;
+    @FXML
+    private Text usernameText;
     private FriendshipService friendshipService;
     private UserService userService;
     private Integer currentUser;
     private ChatRoomService chatRoomService;
+    @FXML
+    private TableView<Notification> notificationsTable;
+    @FXML
+    private TableColumn<Notification, String> notificationColumn;
+    private NotificationRepoDB notificationRepo;
 
-    public void setUserService(UserService userService, FriendshipService friendshipService, ChatRoomService chatRoomService, Integer currentUser) throws IOException {
+    public void setUserService(UserService userService, FriendshipService friendshipService, ChatRoomService chatRoomService , Integer currentUser) throws IOException, SQLException {
         this.userService = userService;
         this.friendshipService = friendshipService;
         this.chatRoomService = chatRoomService;
         this.currentUser = currentUser;
+        User user = userService.findUserById(currentUser);
+        if (user != null) {
+            usernameText.setText(user.getUsername());
+        }
+        this.notificationRepo = new NotificationRepoDB();
         friendshipService.registerObserver(this);
         loadFriends();
         loadRequests();
@@ -116,7 +128,49 @@ public class MainController implements Observer {
     }
 
     @FXML
-    private void handleAddFriend() throws IOException {
+    private void initialize() {
+        roomsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+            if (oldSelection != null) {
+                chatRoomService.removeChatObserver(oldSelection.getId(), this);
+            }
+
+            if (newSelection != null) {
+                currentChatRoom = newSelection;
+                chatRoomService.registerChatObserver(newSelection.getId(), this);
+                try {
+                    loadChatMessages(newSelection.getId());
+                    handleRoomSelection(newSelection);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        notificationColumn.setCellValueFactory(cellData -> {
+            Notification notification = cellData.getValue();
+            return new SimpleStringProperty(notification.getMessage());
+        });
+
+        // Optional: adaugă un row factory pentru stilizare
+        notificationsTable.setRowFactory(tv -> {
+            TableRow<Notification> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (!row.isEmpty()) {
+                    Notification notification = row.getItem();
+                    try {
+                        notificationRepo.markAsRead(notification.getId());
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+            return row;
+        });
+    }
+
+
+    @FXML
+    private void handleAddFriend() {
         User selectedUser = usersTable.getSelectionModel().getSelectedItem();
         if (selectedUser != null) {
             try {
@@ -168,9 +222,14 @@ public class MainController implements Observer {
 
     @FXML
     private void handleLogout() throws IOException {
+        cleanup();
         LoginController.logoutUser(friendshipService.findUserById(currentUser).getUsername());
         Stage stage = (Stage) searchField.getScene().getWindow();
         stage.close();
+    }
+
+    public void initializeWindowCloseHandler(Stage stage) {
+        stage.setOnCloseRequest(event -> cleanup());
     }
 
     @FXML
@@ -185,9 +244,8 @@ public class MainController implements Observer {
     @FXML
     private void handleSendMessage() {
         String messageText = messageField.getText().trim();
-        ChatRoom selectedRoom = roomsTable.getSelectionModel().getSelectedItem();
 
-        if (selectedRoom == null) {
+        if (currentChatRoom == null) {
             showAlert(Alert.AlertType.WARNING, "Please select a chat room.");
             return;
         }
@@ -199,12 +257,38 @@ public class MainController implements Observer {
 
         try {
             User currentUser = userService.findUserById(this.currentUser);
-            chatRoomService.sendMessage(selectedRoom.getId(), currentUser, messageText);
-
-            loadChatMessages(selectedRoom.getId());
+            chatRoomService.sendMessage(currentChatRoom.getId(), currentUser, messageText);
             messageField.clear();
         } catch (IOException e) {
             showAlert(Alert.AlertType.ERROR, "Failed to send message: " + e.getMessage());
+        }
+    }
+
+    public void cleanup() {
+        if (currentChatRoom != null) {
+            chatRoomService.removeChatObserver(currentChatRoom.getId(), this);
+        }
+        chatRoomService.removeObserver(this);
+    }
+
+    private void handleRoomSelection(ChatRoom selectedRoom) {
+        try {
+            User currentUser = userService.findUserById(this.currentUser);
+            boolean isParticipant = chatRoomService.isUserInChatRoom(selectedRoom.getId(), currentUser);
+
+            // Disable or enable message input based on participation
+            messageField.setDisable(!isParticipant);
+            sendButton.setDisable(!isParticipant);
+
+            if (!isParticipant) {
+                messageField.setPromptText("You are not a participant in this chat room");
+            } else {
+                messageField.setPromptText("Type your message here");
+            }
+
+            loadChatMessages(selectedRoom.getId());
+        } catch (IOException e) {
+            showAlert(Alert.AlertType.ERROR, "Error checking room participation: " + e.getMessage());
         }
     }
 
@@ -268,10 +352,15 @@ public class MainController implements Observer {
     }
 
     private void loadChatMessages(int chatRoomId) throws IOException {
-        List<Message> messages = chatRoomService.getMessagesByChatRoomId(chatRoomId);
-        chatListView.getItems().clear();
-        for (Message message : messages) {
-            chatListView.getItems().add(message.getFrom().getUsername() + ": " + message.getMessage());
+        Optional<ChatRoom> chatRoomOpt = chatRoomService.getChatRoomWithMessages(chatRoomId);
+        if (chatRoomOpt.isPresent()) {
+            ChatRoom chatRoom = chatRoomOpt.get();
+            chatListView.getItems().clear();
+            for (Message message : chatRoom.getMessages()) {
+                chatListView.getItems().add(message.getFrom().getUsername() + ": " + message.getMessage());
+            }
+            // Scroll to bottom to show latest messages
+            chatListView.scrollTo(chatListView.getItems().size() - 1);
         }
     }
 
@@ -287,42 +376,33 @@ public class MainController implements Observer {
     }
 
     private void loadFriends() throws IOException {
-        List<User> friends = friendshipService.getFriends(friendshipService.findUserById(currentUser).getUsername());
-        friendsPagination.setPageCount((int) Math.ceil((double) friends.size() / ITEMS_PER_PAGE));
+        String username = friendshipService.findUserById(currentUser).getUsername();
         friendsPagination.setPageFactory(pageIndex -> {
-            updateTableView(friendsTable, friends, pageIndex);
-            return friendsTable;
+            try {
+                Page<User> friendsPage = friendshipService.getFriendsPaginated(username, pageIndex);
+                friendsTable.getItems().setAll(friendsPage.getItems());
+                friendsPagination.setPageCount(friendsPage.getTotalPages());
+                return friendsTable;
+            } catch (IOException e) {
+                e.printStackTrace();
+                return null;
+            }
         });
     }
 
     private void loadRequests() throws IOException {
-        List<User> requests = friendshipService.getPendingRequests(friendshipService.findUserById(currentUser).getUsername());
-        requestsPagination.setPageCount((int) Math.ceil((double) requests.size() / ITEMS_PER_PAGE));
+        String username = friendshipService.findUserById(currentUser).getUsername();
         requestsPagination.setPageFactory(pageIndex -> {
-            updateTableView(requestsTable, requests, pageIndex);
-            return requestsTable;
+            try {
+                Page<User> requestsPage = friendshipService.getPendingRequestsPaginated(username, pageIndex);
+                requestsTable.getItems().setAll(requestsPage.getItems());
+                requestsPagination.setPageCount(requestsPage.getTotalPages());
+                return requestsTable;
+            } catch (IOException e) {
+                e.printStackTrace();
+                return null;
+            }
         });
-    }
-
-    private void updateTableView(TableView<User> tableView, List<User> users, int pageIndex) {
-        int fromIndex = pageIndex * ITEMS_PER_PAGE;
-        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, users.size());
-        List<User> subList = users.subList(fromIndex, toIndex);
-        tableView.getItems().setAll(subList);
-    }
-
-    private Node createPage(List<User> users, int pageIndex) {
-        int fromIndex = pageIndex * ITEMS_PER_PAGE;
-        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, users.size());
-        List<User> subList = users.subList(fromIndex, toIndex);
-
-        TableView<User> tableView = new TableView<>();
-        TableColumn<User, String> usernameColumn = new TableColumn<>("Username");
-        usernameColumn.setCellValueFactory(new PropertyValueFactory<>("username"));
-        tableView.getColumns().add(usernameColumn);
-        tableView.getItems().setAll(subList);
-
-        return tableView;
     }
 
     private void loadAllUsers() {
@@ -330,6 +410,30 @@ public class MainController implements Observer {
             usersTable.getItems().setAll(userService.getAllUsers());
         } catch (IOException e) {
             showAlert(Alert.AlertType.ERROR, "Failed to load users: " + e.getMessage());
+        }
+    }
+
+    private void loadNotifications() {
+        try {
+            User currentUserObj = userService.findUserById(currentUser);
+            if (currentUserObj == null) {
+                return;
+            }
+
+            List<Notification> notifications = notificationRepo.getNotificationsForUser(currentUserObj);
+
+            Platform.runLater(() -> {
+                notificationsTable.getItems().clear();
+                notificationsTable.getItems().addAll(notifications);
+
+                // Debug: afișează numărul de notificări încărcate
+                System.out.println("Loaded " + notifications.size() + " notifications");
+                notifications.forEach(n -> System.out.println("Notification: " + n.getMessage()));
+            });
+
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Failed to load notifications: " + e.getMessage());
         }
     }
 
@@ -346,27 +450,27 @@ public class MainController implements Observer {
         usersTable.getItems().setAll(users);
     }
 
-//    @FXML
-//    private void initialize() {
-//        roomsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
-//            if (newSelection != null) {
-//                try {
-//                    loadChatMessages(newSelection.getId()); // Corrected method call
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
-//            }
-//        });
-//    }
-
     @Override
     public void update() {
         try {
             loadFriends();
             loadRequests();
-            loadChatRooms(); // Corrected method call
+            loadChatRooms();
+            loadNotifications();
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onNewMessage(int chatRoomId, Message message) {
+        if (currentChatRoom != null && currentChatRoom.getId() == chatRoomId) {
+            Platform.runLater(() -> {
+                chatListView.getItems().add(
+                        message.getFrom().getUsername() + ": " + message.getMessage()
+                );
+                chatListView.scrollTo(chatListView.getItems().size() - 1);
+            });
         }
     }
 }

@@ -7,7 +7,6 @@ import socialnetwork.socialnetwork.domain.User;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class MessageRepository {
     private final Connection connection;
@@ -133,22 +132,29 @@ public class MessageRepository {
         return null;
     }
 
-    private List<Message> findMessages(int chatRoomId) throws SQLException {
+    public List<Message> findMessages(int chatRoomId) throws SQLException {
         List<Message> messages = new ArrayList<>();
-        String sql = "SELECT m.id, m.user_id, m.message, m.date, u.username, u.password FROM messages m " +
-                "JOIN users u ON m.user_id = u.id WHERE m.chatroom_id = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, chatRoomId);
-            ResultSet resultSet = statement.executeQuery();
-            while (resultSet.next()) {
-                int id = resultSet.getInt("id");
-                int userId = resultSet.getInt("user_id");
-                String messageText = resultSet.getString("message");
-                Timestamp date = resultSet.getTimestamp("date");
-                String username = resultSet.getString("username");
-                String password = resultSet.getString("password");
+        String sql = "SELECT m.id, m.user_id, m.message, m.date, u.username, u.password " +
+                "FROM messages m " +
+                "JOIN users u ON m.user_id = u.id " +
+                "WHERE m.chatroom_id = ? " +
+                "ORDER BY m.date ASC";
+
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, chatRoomId);
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                int userId = rs.getInt("user_id");
+                String messageText = rs.getString("message");
+                Timestamp date = rs.getTimestamp("date");
+                String username = rs.getString("username");
+                String password = rs.getString("password");
+
                 User user = new User(userId, username, password);
-                messages.add(new Message(user, List.of(user), messageText, date.toLocalDateTime(), MessageType.Message));
+                Message message = new Message(user, null, messageText, date.toLocalDateTime(), MessageType.Message);
+                message.setChatRoomId(chatRoomId);
+                messages.add(message);
             }
         }
         return messages;

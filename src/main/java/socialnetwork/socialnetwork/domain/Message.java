@@ -21,15 +21,6 @@ public class Message extends Entity<Integer>{
         this.reply = null;
     }
 
-    public Message(User from, List<User> to, String message, MessageType type) {
-        this.from = from;
-        this.to = to;
-        this.message = message;
-        this.date = LocalDateTime.now();
-        this.reply = null;
-        this.type = type;
-    }
-
     public void setChatRoomId(int chatRoomId) {
         this.chatRoomId = chatRoomId;
     }
