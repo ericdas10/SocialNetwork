@@ -13,7 +13,7 @@ public class LoginSignUpApp extends Application {
     public void start(Stage primaryStage) throws Exception {
         Parent root = FXMLLoader.load(Objects.requireNonNull(getClass().getResource("/socialnetwork/socialnetwork/login.fxml")));
         primaryStage.setTitle("Login / Sign Up");
-        primaryStage.setScene(new Scene(root, 550, 500));
+        primaryStage.setScene(new Scene(root, 1000, 600));
         primaryStage.show();
     }
 

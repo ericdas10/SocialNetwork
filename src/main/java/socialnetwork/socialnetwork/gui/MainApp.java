@@ -13,7 +13,7 @@ public class MainApp extends Application {
     public void start(Stage primaryStage) throws Exception {
         Parent root = FXMLLoader.load(Objects.requireNonNull(getClass().getResource("/socialnetwork/socialnetwork/main.fxml")));
         primaryStage.setTitle("Main Page");
-        primaryStage.setScene(new Scene(root, 600, 400));
+        primaryStage.setScene(new Scene(root, 1000, 600));
         primaryStage.show();
     }
 

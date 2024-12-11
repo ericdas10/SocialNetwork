@@ -11,4 +11,5 @@ public interface AbstractRepo<ID, E extends Entity<ID>> {
     Iterable<E> findAll() throws IOException;
 
     Optional<E> findOne(ID id) throws IOException;
+    Optional<E> update(E entity) throws IOException;
 }

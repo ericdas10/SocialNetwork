@@ -97,4 +97,22 @@ public class UserRepoDB implements AbstractRepo<Integer, User>{
         }
         return Optional.empty();
     }
+
+    @Override
+    public Optional<User> update(User user) {
+        if(user == null)
+            throw new IllegalArgumentException("entity must be not null!");
+        String sql = "update users set username = ?, password = ? where id = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(2,user.getUsername());
+            statement.setString(3, user.getPassword());
+            statement.setLong(1, user.getId());
+            if( statement.executeUpdate() > 0 )
+                return Optional.empty();
+            return Optional.ofNullable(user);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Optional.empty();
+    }
 }
