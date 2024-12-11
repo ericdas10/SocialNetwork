@@ -8,8 +8,8 @@ import socialnetwork.socialnetwork.observer.Subject;
 import socialnetwork.socialnetwork.repository.AbstractRepo;
 import socialnetwork.socialnetwork.repository.FriendshipRepoDB;
 
-import java.time.LocalDate;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -61,8 +61,8 @@ public class FriendshipService implements Subject {
                 throw new IOException("One or both users not found.");
             }
         } else {
-                throw new IOException("Friendship already exists.");
-            }
+            throw new IOException("Friendship already exists.");
+        }
     }
 
     public void acceptFriendRequest(Integer id1, Integer id2) throws IOException {
@@ -101,6 +101,26 @@ public class FriendshipService implements Subject {
                 }, () -> {
                     try {
                         throw new IOException("No friendship found between these users.");
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+    }
+
+    public void rejectFriendRequest(Integer id1, Integer id2) throws IOException {
+        StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
+                .filter(friendship -> isPendingFriendshipBetweenUsers(friendship, id1, id2))
+                .findFirst()
+                .ifPresentOrElse(friendship -> {
+                    try {
+                        friendshipRepo.remove(friendship.getId());
+                        notifyObservers();
+                    } catch (IOException e) {
+                        System.err.println("Failed to remove friendship: " + e.getMessage());
+                    }
+                }, () -> {
+                    try {
+                        throw new IOException("No pending friend request found between these users.");
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -154,20 +174,20 @@ public class FriendshipService implements Subject {
         }
     }
 
-    public List<String> getFriends(String currentUser) throws IOException {
+    public List<User> getFriends(String currentUser) throws IOException {
         User user = findUserByUsername(currentUser);
         return StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
                 .filter(friendship -> friendship.getStatus() == FriendshipStatus.ACCEPTED &&
                         (friendship.getUser1().getId().equals(user.getId()) || friendship.getUser2().getId().equals(user.getId())))
-                .map(friendship -> friendship.getUser1().getId().equals(user.getId()) ? friendship.getUser2().getUsername() + " is " + friendship.getStatus() + " from date " + friendship.getDate() : friendship.getUser1().getUsername() + " is " + friendship.getStatus() + " from date " + friendship.getDate())
+                .map(friendship -> friendship.getUser1().getId().equals(user.getId()) ? friendship.getUser2() : friendship.getUser1())
                 .collect(Collectors.toList());
     }
 
-    public List<String> getPendingRequests(String currentUser) throws IOException {
+    public List<User> getPendingRequests(String currentUser) throws IOException {
         User user = findUserByUsername(currentUser);
         return StreamSupport.stream(friendshipRepo.findAll().spliterator(), false)
                 .filter(friendship -> friendship.getStatus() == FriendshipStatus.PENDING && friendship.getUser2().getId().equals(user.getId()))
-                .map(friendship -> friendship.getUser1().getUsername() + " is " + friendship.getStatus() + " from date " + friendship.getDate())
+                .map(Friendship::getUser1)
                 .collect(Collectors.toList());
     }
 

@@ -1,266 +1,370 @@
 package socialnetwork.socialnetwork.gui;
 
-import javafx.beans.property.SimpleStringProperty;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
+import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.Stage;
+import socialnetwork.socialnetwork.domain.ChatRoom;
 import socialnetwork.socialnetwork.domain.Message;
-import socialnetwork.socialnetwork.domain.MessageType;
 import socialnetwork.socialnetwork.domain.User;
 import socialnetwork.socialnetwork.observer.Observer;
+import socialnetwork.socialnetwork.service.ChatRoomService;
 import socialnetwork.socialnetwork.service.FriendshipService;
-import socialnetwork.socialnetwork.service.MessageService;
 import socialnetwork.socialnetwork.service.UserService;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class MainController implements Observer {
     @FXML
+    private Button removeFriendButton;
+    @FXML
     private TextField searchField;
     @FXML
-    private TableView<SimpleStringProperty> friendsTable;
+    private Button searchButton;
     @FXML
-    private TableView<SimpleStringProperty> requestsTable;
+    private TableView<User> usersTable;
     @FXML
-    private TableColumn<SimpleStringProperty, String> friendsColumn;
+    private TableColumn<User, String> usernameColumn;
     @FXML
-    private TableColumn<SimpleStringProperty, String> requestsColumn;
+    private Button addFriendButton;
     @FXML
-    private TextArea chatArea;
+    private TableView<User> friendsTable;
+    @FXML
+    private TableView<User> requestsTable;
+    @FXML
+    private Button acceptRequestButton;
+    @FXML
+    private Button rejectRequestButton;
+    @FXML
+    private TableView<ChatRoom> roomsTable; // Corrected type
+    @FXML
+    private ListView<String> chatListView;
+    @FXML
+    private TextField messageField;
+    @FXML
+    private Button sendButton;
+    @FXML
+    private Button createRoomButton;
+    @FXML
+    private Button logoutButton;
+    @FXML
+    private Button deleteAccountButton;
     @FXML
     private TextField chatInput;
     @FXML
-    private Button sendButton;
-
-    @FXML
     private ListView<String> chatRoomsListView;
+    @FXML
+    private TableView<String> notificationsTable;
+    @FXML
+    private TextField roomNameField;
+    @FXML
+    private TextField participantsField;
+    @FXML
+    private Pagination friendsPagination;
+    @FXML
+    private Pagination requestsPagination;
 
-    private final ObservableList<String> chatRoomsList = FXCollections.observableArrayList();
+    private static final int ITEMS_PER_PAGE = 10;
 
     private FriendshipService friendshipService;
     private UserService userService;
-    private MessageService messageService;
-    private String currentUser;
+    private Integer currentUser;
+    private ChatRoomService chatRoomService;
 
-    private final ObservableList<SimpleStringProperty> friendsList = FXCollections.observableArrayList();
-    private final ObservableList<SimpleStringProperty> requestsList = FXCollections.observableArrayList();
-    private ObservableList<Message> chatMessages = FXCollections.observableArrayList();
-
-    public void setUserService(UserService userService, FriendshipService friendshipService, MessageService messageService, String currentUser) throws IOException {
+    public void setUserService(UserService userService, FriendshipService friendshipService, ChatRoomService chatRoomService, Integer currentUser) throws IOException {
         this.userService = userService;
         this.friendshipService = friendshipService;
-        this.messageService = messageService;
+        this.chatRoomService = chatRoomService;
         this.currentUser = currentUser;
-        friendsTable.setItems(friendsList);
-        requestsTable.setItems(requestsList);
+        friendshipService.registerObserver(this);
         loadFriends();
         loadRequests();
-        loadChatMessages();
-        friendshipService.registerObserver(this);
-        messageService.registerObserver(this);
-        chatRoomsListView.setItems(chatRoomsList);
+        loadChatRooms();
+        loadAllUsers();
+        initializeTables();
+    }
+
+    private void initializeTables() {
+        usersTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("username"));
+        friendsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("username"));
+        requestsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("username"));
+        roomsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("name"));
+        notificationsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("notification"));
+        usernameColumn.setCellValueFactory(cellData -> new ReadOnlyObjectWrapper<>(cellData.getValue().getUsername()));
+        friendsTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        requestsTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        initializeChat();
+    }
+
+    @FXML
+    private void initializeChat() {
+        roomsTable.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null) {
+                try {
+                    loadChatMessages(newValue.getId());
+                    loadChatParticipants(newValue.getId());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
     }
 
     @FXML
     private void handleAddFriend() throws IOException {
-        String username = searchField.getText();
-        if (!username.isEmpty()) {
-            friendshipService.addFriend(friendshipService.findUserByUsername(currentUser).getId(), friendshipService.findUserByUsername(username).getId());
-            loadFriends();
-            loadRequests();
+        User selectedUser = usersTable.getSelectionModel().getSelectedItem();
+        if (selectedUser != null) {
+            try {
+                friendshipService.addFriend(currentUser, selectedUser.getId());
+                loadFriends();
+                loadRequests();
+            } catch (IOException e) {
+                showAlert(Alert.AlertType.WARNING, e.getMessage());
+            }
+        } else {
+            showAlert(Alert.AlertType.WARNING, "Please select a user to add as friend.");
         }
     }
 
     @FXML
     private void handleRemoveFriend() throws IOException {
-        String username = searchField.getText();
-        if (!username.isEmpty()) {
-            friendshipService.removeFriend(friendshipService.findUserByUsername(currentUser).getId(), friendshipService.findUserByUsername(username).getId());
+        User selectedUser = friendsTable.getSelectionModel().getSelectedItem();
+        if (selectedUser != null) {
+            friendshipService.removeFriend(currentUser, selectedUser.getId());
             loadFriends();
             loadRequests();
+        } else {
+            showAlert(Alert.AlertType.WARNING, "Please select a friend to remove.");
         }
     }
 
     @FXML
     private void handleAcceptFriendRequest() throws IOException {
-        String username = searchField.getText();
-        if (!username.isEmpty()) {
-            friendshipService.acceptFriendRequest(friendshipService.findUserByUsername(username).getId(), friendshipService.findUserByUsername(currentUser).getId());
+        User selectedUser = requestsTable.getSelectionModel().getSelectedItem();
+        if (selectedUser != null) {
+            friendshipService.acceptFriendRequest(selectedUser.getId(), currentUser);
             loadFriends();
             loadRequests();
+        } else {
+            showAlert(Alert.AlertType.WARNING, "Please select a request to accept.");
         }
-    }
-
-    @FXML
-    private void handleLogout() {
-        LoginController.logoutUser(currentUser);
-        Stage stage = (Stage) searchField.getScene().getWindow();
-        stage.close();
-    }
-
-    @FXML
-    private void handleDeleteAccount() throws IOException {
-        friendshipService.garbageFrindships(friendshipService.findUserByUsername(currentUser));
-        userService.deleteUser(friendshipService.findUserByUsername(currentUser));
-        LoginController.logoutUser(currentUser);
-        Stage stage = (Stage) searchField.getScene().getWindow();
-        stage.close();
-    }
-
-    @FXML
-    private void handleSendMessage() throws IOException {
-        String messageText = chatInput.getText();
-        if (!messageText.isEmpty()) {
-            User fromUser = friendshipService.findUserByUsername(currentUser);
-            List<User> toUsers = friendsTable.getSelectionModel().getSelectedItems().stream()
-                    .map(item -> {
-                        try {
-                            return friendshipService.findUserByUsername(item.getValue());
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            return null;
-                        }
-                    })
-                    .toList();
-            messageService.sendMessage(fromUser, toUsers, messageText);
-            chatInput.clear();
-            loadChatMessages();
-        }
-    }
-
-    private void loadFriends() throws IOException {
-        List<String> friends = friendshipService.getFriends(currentUser);
-        friendsList.setAll(friends.stream().map(SimpleStringProperty::new).toList());
-    }
-
-    private void loadRequests() throws IOException {
-        List<String> requests = friendshipService.getPendingRequests(currentUser);
-        requestsList.setAll(requests.stream().map(SimpleStringProperty::new).toList());
-    }
-
-    private void loadChatMessages() throws IOException {
-        Iterable<Message> messages = messageService.getAllMessages();
-        chatArea.clear();
-        for (Message message : messages) {
-            chatArea.appendText(message.getFrom().getUsername() + ": " + message.getMessage() + "\n");
-        }
-    }
-
-    @FXML
-    private void handleCreateConversation() throws IOException {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("/socialnetwork/socialnetwork/create_conversation.fxml"));
-        Parent root = loader.load();
-        CreateConversationController controller = loader.getController();
-        controller.setUserService(userService);
-        controller.setMainController(this);
-        Stage stage = new Stage();
-        stage.setScene(new Scene(root));
-        stage.setTitle("Create Conversation");
-        stage.show();
-    }
-
-
-    @FXML
-    private void handleSearch() throws IOException {
-        String searchText = searchField.getText();
-        List<User> users = userService.findUsersByUsernames(searchText);
-        usersTable.getItems().setAll(users);
     }
 
     @FXML
     private void handleRejectFriendRequest() throws IOException {
         User selectedUser = requestsTable.getSelectionModel().getSelectedItem();
         if (selectedUser != null) {
-            friendshipService.rejectFriendRequest(currentUser, selectedUser.getUsername());
-            updateRequestsTable();
+            friendshipService.rejectFriendRequest(currentUser, selectedUser.getId());
+            loadRequests();
+        } else {
+            showAlert(Alert.AlertType.WARNING, "Please select a request to reject.");
         }
     }
 
-    public void createConversation(List<String> usernames) throws IOException {
-        List<User> users = userService.findUsersByUsernames(usernames);
-        if (users.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Error");
-            alert.setHeaderText(null);
-            alert.setContentText("No users found for the provided usernames.");
-            alert.showAndWait();
+    @FXML
+    private void handleLogout() throws IOException {
+        LoginController.logoutUser(friendshipService.findUserById(currentUser).getUsername());
+        Stage stage = (Stage) searchField.getScene().getWindow();
+        stage.close();
+    }
+
+    @FXML
+    private void handleDeleteAccount() throws IOException {
+        friendshipService.garbageFrindships(friendshipService.findUserById(currentUser));
+        userService.deleteUser(friendshipService.findUserById(currentUser));
+        LoginController.logoutUser(friendshipService.findUserById(currentUser).getUsername());
+        Stage stage = (Stage) searchField.getScene().getWindow();
+        stage.close();
+    }
+
+    @FXML
+    private void handleSendMessage() {
+        String messageText = messageField.getText().trim();
+        ChatRoom selectedRoom = roomsTable.getSelectionModel().getSelectedItem();
+
+        if (selectedRoom == null) {
+            showAlert(Alert.AlertType.WARNING, "Please select a chat room.");
             return;
         }
 
-        User fromUser = userService.findUserByUsername(currentUser);
-        String initialMessage = "Conversation started with " + String.join(", ", usernames);
-        Message newMessage = new Message(fromUser, users, initialMessage, LocalDateTime.now(), MessageType.Message);
+        if (messageText.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Message cannot be empty.");
+            return;
+        }
 
-        messageService.sendMessage(fromUser, users, initialMessage);
+        try {
+            User currentUser = userService.findUserById(this.currentUser);
+            chatRoomService.sendMessage(selectedRoom.getId(), currentUser, messageText);
 
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Conversation Created");
-        alert.setHeaderText(null);
-        alert.setContentText("Conversation successfully created with " + String.join(", ", usernames));
+            loadChatMessages(selectedRoom.getId());
+            messageField.clear();
+        } catch (IOException e) {
+            showAlert(Alert.AlertType.ERROR, "Failed to send message: " + e.getMessage());
+        }
+    }
+
+    @FXML
+    public void handleCreateChatRoom() {
+        String roomName = roomNameField.getText().trim();
+        String participantsText = participantsField.getText().trim();
+
+        // Validate input
+        if (roomName.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Please enter a room name.");
+            return;
+        }
+
+        if (participantsText.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Please enter participants.");
+            return;
+        }
+
+        try {
+            List<String> participantUsernames = List.of(participantsText.split(","));
+
+            // Get current user and add to participants if not already included
+            User creator = userService.findUserById(currentUser);
+            List<User> users = participantUsernames.stream()
+                    .map(username -> {
+                        try {
+                            return userService.findUserByUsername(username.trim());
+                        } catch (IOException e) {
+                            showAlert(Alert.AlertType.ERROR, "Error finding user: " + username);
+                            return null;
+                        }
+                    })
+                    .filter(user -> user != null)
+                    .collect(Collectors.toList());
+
+            // Ensure creator is in the list
+            if (!users.contains(creator)) {
+                users.add(creator);
+            }
+
+            Optional<ChatRoom> newRoom = chatRoomService.createChatRoom(roomName, users, creator);
+
+            if (newRoom.isPresent()) {
+                showAlert(Alert.AlertType.INFORMATION, "Chat room created successfully!");
+                loadChatRooms();
+                // Clear input fields
+                roomNameField.clear();
+                participantsField.clear();
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Failed to create chat room.");
+            }
+        } catch (IOException e) {
+            showAlert(Alert.AlertType.ERROR, "Error creating chat room: " + e.getMessage());
+        }
+    }
+
+    private void loadChatRooms() throws IOException {
+        List<ChatRoom> chatRooms = chatRoomService.getAllChatRooms();
+        roomsTable.getItems().setAll(chatRooms); // Corrected type
+    }
+
+    private void loadChatMessages(int chatRoomId) throws IOException {
+        List<Message> messages = chatRoomService.getMessagesByChatRoomId(chatRoomId);
+        chatListView.getItems().clear();
+        for (Message message : messages) {
+            chatListView.getItems().add(message.getFrom().getUsername() + ": " + message.getMessage());
+        }
+    }
+
+    private void loadChatParticipants(int chatRoomId) throws IOException {
+        Optional<ChatRoom> chatRoomOpt = chatRoomService.getChatRoomById(chatRoomId);
+        if (chatRoomOpt.isPresent()) {
+            ChatRoom chatRoom = chatRoomOpt.get();
+            String participants = chatRoom.getParticipants().stream()
+                    .map(User::getUsername)
+                    .collect(Collectors.joining(", "));
+            chatListView.getItems().add(0, "Participants: " + participants);
+        }
+    }
+
+    private void loadFriends() throws IOException {
+        List<User> friends = friendshipService.getFriends(friendshipService.findUserById(currentUser).getUsername());
+        friendsPagination.setPageCount((int) Math.ceil((double) friends.size() / ITEMS_PER_PAGE));
+        friendsPagination.setPageFactory(pageIndex -> {
+            updateTableView(friendsTable, friends, pageIndex);
+            return friendsTable;
+        });
+    }
+
+    private void loadRequests() throws IOException {
+        List<User> requests = friendshipService.getPendingRequests(friendshipService.findUserById(currentUser).getUsername());
+        requestsPagination.setPageCount((int) Math.ceil((double) requests.size() / ITEMS_PER_PAGE));
+        requestsPagination.setPageFactory(pageIndex -> {
+            updateTableView(requestsTable, requests, pageIndex);
+            return requestsTable;
+        });
+    }
+
+    private void updateTableView(TableView<User> tableView, List<User> users, int pageIndex) {
+        int fromIndex = pageIndex * ITEMS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, users.size());
+        List<User> subList = users.subList(fromIndex, toIndex);
+        tableView.getItems().setAll(subList);
+    }
+
+    private Node createPage(List<User> users, int pageIndex) {
+        int fromIndex = pageIndex * ITEMS_PER_PAGE;
+        int toIndex = Math.min(fromIndex + ITEMS_PER_PAGE, users.size());
+        List<User> subList = users.subList(fromIndex, toIndex);
+
+        TableView<User> tableView = new TableView<>();
+        TableColumn<User, String> usernameColumn = new TableColumn<>("Username");
+        usernameColumn.setCellValueFactory(new PropertyValueFactory<>("username"));
+        tableView.getColumns().add(usernameColumn);
+        tableView.getItems().setAll(subList);
+
+        return tableView;
+    }
+
+    private void loadAllUsers() {
+        try {
+            usersTable.getItems().setAll(userService.getAllUsers());
+        } catch (IOException e) {
+            showAlert(Alert.AlertType.ERROR, "Failed to load users: " + e.getMessage());
+        }
+    }
+
+    private void showAlert(Alert.AlertType alertType, String message) {
+        Alert alert = new Alert(alertType);
+        alert.setContentText(message);
         alert.showAndWait();
     }
 
     @FXML
-    private void initialize() {
-        chatRoomsListView.setItems(chatRoomsList);
+    private void handleSearch() throws IOException {
+        String searchText = searchField.getText();
+        List<User> users = userService.findUsersByUsernames(List.of(searchText));
+        usersTable.getItems().setAll(users);
     }
 
-    @FXML
-    private void handleCreateChatRoom() throws IOException {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("/socialnetwork/socialnetwork/create_conversation.fxml"));
-        Parent root = loader.load();
-        CreateConversationController controller = loader.getController();
-        controller.setUserService(userService);
-        controller.setMainController(this);
-        Stage stage = new Stage();
-        stage.setScene(new Scene(root));
-        stage.setTitle("Create Chat Room");
-        stage.show();
-    }
-
-    public void createChatRoom(String chatRoomName, List<String> usernames) throws IOException {
-        chatRoomsList.add(chatRoomName);
-        List<User> participants = userService.findUsersByUsernames(usernames);
-        openChatRoom(chatRoomName, participants);
-    }
-
-    @FXML
-    private void handleOpenChatRoom() throws IOException {
-        String selectedChatRoom = chatRoomsListView.getSelectionModel().getSelectedItem();
-        if (selectedChatRoom != null) {
-            List<User> participants = userService.findUsersByUsernames(List.of(selectedChatRoom.split(", ")));
-            openChatRoom(selectedChatRoom, participants);
-        }
-    }
-
-    private void openChatRoom(String chatRoomName, List<User> participants) throws IOException {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("/socialnetwork/socialnetwork/chat_room.fxml"));
-        Parent root = loader.load();
-        ChatRoomController controller = loader.getController();
-        controller.setChatRoomName(chatRoomName);
-        controller.setParticipants(participants);
-        controller.setCurrentUser(userService.findUserByUsername(currentUser));
-        controller.setMessageService(messageService);
-        Stage stage = new Stage();
-        stage.setScene(new Scene(root));
-        stage.setTitle("Chat Room - " + chatRoomName);
-        stage.show();
-    }
-
+//    @FXML
+//    private void initialize() {
+//        roomsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+//            if (newSelection != null) {
+//                try {
+//                    loadChatMessages(newSelection.getId()); // Corrected method call
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        });
+//    }
 
     @Override
     public void update() {
         try {
             loadFriends();
             loadRequests();
-            loadChatMessages();
+            loadChatRooms(); // Corrected method call
         } catch (IOException e) {
             e.printStackTrace();
         }

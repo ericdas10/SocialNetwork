@@ -10,6 +10,7 @@ public class Message extends Entity<Integer>{
     private LocalDateTime date;
     private Message reply;
     private MessageType type;
+    private int chatRoomId;
 
     public Message(User from, List<User> to, String message, LocalDateTime date, MessageType type) {
         this.from = from;
@@ -29,6 +30,13 @@ public class Message extends Entity<Integer>{
         this.type = type;
     }
 
+    public void setChatRoomId(int chatRoomId) {
+        this.chatRoomId = chatRoomId;
+    }
+
+    public int getChatRoomId() {
+        return chatRoomId;
+    }
 
     public User getFrom() {
         return from;

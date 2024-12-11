@@ -9,10 +9,12 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import socialnetwork.socialnetwork.domain.User;
 import socialnetwork.socialnetwork.domain.validators.UserValidator;
+import socialnetwork.socialnetwork.repository.ChatRoomRepoDB;
 import socialnetwork.socialnetwork.repository.FriendshipRepoDB;
+import socialnetwork.socialnetwork.repository.MessageRepository;
 import socialnetwork.socialnetwork.repository.UserRepoDB;
+import socialnetwork.socialnetwork.service.ChatRoomService;
 import socialnetwork.socialnetwork.service.FriendshipService;
-import socialnetwork.socialnetwork.service.MessageService;
 import socialnetwork.socialnetwork.service.UserService;
 
 import java.io.IOException;
@@ -32,7 +34,9 @@ public class LoginController {
 
     private UserService userService = new UserService(new UserRepoDB(), new UserValidator());
     private FriendshipService fr = new FriendshipService(new FriendshipRepoDB(), new UserRepoDB());
-    private MessageService messageService = new MessageService(new MessageRepoDB());
+//    private MessageService messageService = new MessageService(new MessageRepository());
+    private ChatRoomService chatRoomService = new ChatRoomService(new ChatRoomRepoDB(), new MessageRepository());
+
 
     private static Set<String> loggedInUsers = new HashSet<>();
 
@@ -56,9 +60,9 @@ public class LoginController {
                 FXMLLoader loader = new FXMLLoader(getClass().getResource("/socialnetwork/socialnetwork/main.fxml"));
                 Parent root = loader.load();
                 MainController controller = loader.getController();
-                controller.setUserService(userService, fr, messageService, user.getUsername());
+                controller.setUserService(userService, fr, chatRoomService, user.getId());
                 Stage mainStage = new Stage();
-                mainStage.setScene(new Scene(root, 600, 400));
+                mainStage.setScene(new Scene(root, 1000, 600));
                 mainStage.setTitle("Main Page");
                 mainStage.show();
             } else {

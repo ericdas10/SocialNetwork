@@ -1,3 +1,4 @@
+// UserService.java
 package socialnetwork.socialnetwork.service;
 
 import socialnetwork.socialnetwork.domain.User;
@@ -66,19 +67,27 @@ public class UserService {
         }
     }
 
-    public Iterable<User> getAllUsers() throws IOException {
-        return userRepo.findAll();
+    public List<User> getAllUsers() throws IOException {
+        return (List<User>) userRepo.findAll();
     }
 
     public User findUserByUsername(String username) throws IOException {
-        return (User) StreamSupport.stream(userRepo.findAll().spliterator(), false)
+        return StreamSupport.stream(userRepo.findAll().spliterator(), false)
                 .filter(user -> user.getUsername().equals(username))
-                .collect(Collectors.toList());
+                .findFirst()
+                .orElse(null);
     }
 
     public List<User> findUsersByUsernames(List<String> usernames) throws IOException {
         return StreamSupport.stream(userRepo.findAll().spliterator(), false)
                 .filter(user -> usernames.contains(user.getUsername()))
                 .collect(Collectors.toList());
+    }
+
+    public User findUserById(Integer id) throws IOException {
+        return StreamSupport.stream(userRepo.findAll().spliterator(), false)
+                .filter(user -> user.getId().equals(id))
+                .findFirst()
+                .orElse(null);
     }
 }
