@@ -98,6 +98,7 @@ public class MainController implements Observer, ChatObserver {
         loadRequests();
         loadChatRooms();
         loadAllUsers();
+        loadNotifications();
         initializeTables();
     }
 
@@ -106,8 +107,7 @@ public class MainController implements Observer, ChatObserver {
         friendsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("username"));
         requestsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("username"));
         roomsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("name"));
-        notificationsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("notification"));
-        usernameColumn.setCellValueFactory(cellData -> new ReadOnlyObjectWrapper<>(cellData.getValue().getUsername()));
+        notificationsTable.getColumns().get(0).setCellValueFactory(new PropertyValueFactory<>("message"));        usernameColumn.setCellValueFactory(cellData -> new ReadOnlyObjectWrapper<>(cellData.getValue().getUsername()));
         friendsTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         requestsTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         initializeChat();
@@ -165,6 +165,14 @@ public class MainController implements Observer, ChatObserver {
                 }
             });
             return row;
+        });
+
+        Platform.runLater(() -> {
+            try {
+                loadNotifications();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         });
     }
 
@@ -416,23 +424,14 @@ public class MainController implements Observer, ChatObserver {
     private void loadNotifications() {
         try {
             User currentUserObj = userService.findUserById(currentUser);
-            if (currentUserObj == null) {
-                return;
-            }
-
-            List<Notification> notifications = notificationRepo.getNotificationsForUser(currentUserObj);
-
-            Platform.runLater(() -> {
+            if (currentUserObj != null) {
+                List<Notification> notifications = notificationRepo.getNotificationsForUser(currentUserObj);
                 notificationsTable.getItems().clear();
                 notificationsTable.getItems().addAll(notifications);
-
-                // Debug: afișează numărul de notificări încărcate
-                System.out.println("Loaded " + notifications.size() + " notifications");
-                notifications.forEach(n -> System.out.println("Notification: " + n.getMessage()));
-            });
-
-        } catch (SQLException | IOException e) {
+            }
+        } catch (SQLException e) {
             e.printStackTrace();
+        } catch (IOException e) {
             showAlert(Alert.AlertType.ERROR, "Failed to load notifications: " + e.getMessage());
         }
     }
